@@ -136,6 +136,8 @@ def list_jobs() -> None:
     table.add_column("ID", style="cyan bold", justify="right", no_wrap=True)
     table.add_column("Name", style="bold")
     table.add_column("Type", style="blue")
+    table.add_column("Details", style="magenta")
+    table.add_column("Conditions", style="red")
     table.add_column("URL", overflow="fold")
     table.add_column("Cron", style="yellow")
     table.add_column("Chat ID", style="dim")
@@ -144,16 +146,24 @@ def list_jobs() -> None:
 
     for job in jobs:
         job_type_str = f"{job.job_type.value}"
+
+        details_str = ""
         if job.selector:
-            job_type_str += f" ({job.selector})"
+            details_str = f"sel: {job.selector}"
+        if job.full_page:
+            details_str = "full page" if not details_str else f"{details_str}, full page"
+            
+        condition_str = "—"
         if job.condition_type:
-            cond = "HAS" if job.condition_type == ConditionType.CONTAINS else "NOT"
-            job_type_str += f" [{cond}: {job.condition_value}]"
+            cond = "CONTAINS" if job.condition_type == ConditionType.CONTAINS else "DOES NOT CONTAIN"
+            condition_str = f"{cond}: '{job.condition_value}'"
 
         table.add_row(
             str(job.id),
             job.name,
             job_type_str,
+            details_str or "—",
+            condition_str,
             job.url,
             job.cron,
             job.chat_id,
@@ -337,6 +347,7 @@ def update(
     contains: str = typer.Option(None, "--contains", help="Alert only if text contains this string."),
     not_contains: str = typer.Option(None, "--not-contains", help="Alert only if text DOES NOT contain this string."),
     full_page: bool = typer.Option(None, "--full-page/--no-full-page", help="Toggle full-page screenshots."),
+    clear_conditions: bool = typer.Option(False, "--clear-conditions", help="Remove all text conditions from the job."),
 ) -> None:
     """Update an existing job's details."""
     db.init_db()
@@ -391,7 +402,7 @@ def update(
         # Actually, let's rely on db.update_job logic if we want to nullify, but right now db.update_job doesn't nullify if not None.
         pass
 
-    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page):
+    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions):
         typer.echo(f"✅ Job {job_id} updated.")
     else:
         typer.echo(f"❌ Job {job_id} not found or no updates provided.", err=True)

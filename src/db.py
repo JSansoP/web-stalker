@@ -164,6 +164,7 @@ def update_job(
     condition_type: ConditionType | None = None,
     condition_value: str | None = None,
     full_page: bool | None = None,
+    clear_conditions: bool = False,
 ) -> bool:
     """Update job fields dynamically. Returns True if the job was found and updated."""
     updates = []
@@ -189,9 +190,13 @@ def update_job(
     if condition_type is not None:
         updates.append("condition_type = ?")
         params.append(condition_type.value)
+    elif clear_conditions:
+        updates.append("condition_type = NULL")
     if condition_value is not None:
         updates.append("condition_value = ?")
         params.append(condition_value)
+    elif clear_conditions:
+        updates.append("condition_value = NULL")
     if full_page is not None:
         updates.append("full_page = ?")
         params.append(int(full_page))
