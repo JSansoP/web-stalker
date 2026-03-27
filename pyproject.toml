@@ -1,0 +1,27 @@
+[project]
+name = "web-stalker"
+version = "0.1.0"
+description = "Cron-based web screenshot notifier via Telegram"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "playwright>=1.49.0",
+    "apscheduler>=3.10.4,<4",
+    "httpx>=0.27.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "loguru>=0.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+

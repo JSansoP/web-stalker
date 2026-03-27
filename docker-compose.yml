@@ -1,0 +1,19 @@
+services:
+  web-stalker:
+    build: .
+    container_name: web-stalker
+    restart: unless-stopped   # survives Pi reboots and container crashes
+
+    # Load BOT_TOKEN and DEFAULT_CHAT_ID from your local .env file
+    env_file:
+      - .env
+
+    volumes:
+      # Persist the SQLite database across container rebuilds / restarts
+      - ./data:/app/data
+
+    # Optional: limit resources on the Pi
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 256m
