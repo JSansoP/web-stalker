@@ -12,9 +12,10 @@ Inside Docker (Raspberry Pi / ARM):
 import os
 
 from playwright.sync_api import sync_playwright
+from loguru import logger
 
 
-def take_screenshot(url: str, full_page: bool = False) -> bytes:
+def take_screenshot(url: str, full_page: bool = False, zoom: int = 100, js_script: str | None = None) -> bytes:
     """
     Navigate to *url* with a headless Chromium browser and return a PNG screenshot
     as raw bytes.
@@ -36,6 +37,21 @@ def take_screenshot(url: str, full_page: bool = False) -> bytes:
         )
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(url, wait_until="networkidle", timeout=30_000)
+        
+        if js_script:
+            try:
+                page.evaluate(js_script)
+                page.wait_for_timeout(500)
+            except Exception as e:
+                logger.warning(f"Failed to execute JS script: {e}")
+                
+        if zoom != 100:
+            try:
+                page.evaluate(f"document.body.style.zoom = '{zoom}%'")
+                page.wait_for_timeout(500)
+            except Exception as e:
+                logger.warning(f"Failed to apply zoom: {e}")
+
         png_bytes = page.screenshot(type="png", full_page=full_page)
         browser.close()
 

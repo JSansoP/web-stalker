@@ -19,7 +19,7 @@ def test_execute_job_screenshot(mock_screenshot, mock_telegram, mock_db, sample_
     scheduler._execute_job(job_id)
     
     # Verify screenshot was taken
-    mock_screenshot.take_screenshot.assert_called_once_with(sample_job_data["url"], full_page=False)
+    mock_screenshot.take_screenshot.assert_called_once_with(sample_job_data["url"], full_page=False, zoom=100, js_script=None)
     
     # Verify telegram was sent
     mock_telegram.send_photo.assert_called_once()
@@ -47,7 +47,7 @@ def test_execute_job_text_no_condition(mock_scraper, mock_telegram, mock_db):
     
     scheduler._execute_job(job_id)
     
-    mock_scraper.extract_text.assert_called_once_with("https://test.com", "h1", timeout=10)
+    mock_scraper.extract_text.assert_called_once_with("https://test.com", "h1", timeout=10, js_script=None)
     mock_telegram.send_message.assert_called_once()
     args, kwargs = mock_telegram.send_message.call_args
     assert "Hello World" in args[2] if len(args) > 2 else kwargs.get("text", "") or "Hello World" in args[2]

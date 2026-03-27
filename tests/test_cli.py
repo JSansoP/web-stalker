@@ -161,3 +161,38 @@ def test_cli_start_missing_token():
     # Simply test the command exists and fails gracefully when BOT_TOKEN is missing or scheduler errors
     result = runner.invoke(app, ["start", "--help"])
     assert result.exit_code == 0
+
+def test_cli_add_zoom_and_js_script(mock_db):
+    """Test adding a job with custom zoom and JS script."""
+    result = runner.invoke(app, [
+        "add", "--name", "ZoomJob", "--url", "https://example.com", 
+        "--cron", "* * * * *", "--zoom", "150", 
+        "--js-script", "document.body.click();"
+    ])
+    assert result.exit_code == 0
+    assert "added" in result.output
+    
+    jobs = db.get_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].zoom == 150
+    assert jobs[0].js_script == "document.body.click();"
+
+def test_cli_update_zoom_and_js_script(mock_db, sample_job_data):
+    """Test updating a job with custom zoom and JS script, and clearing script."""
+    job_id = db.add_job(**sample_job_data)
+    
+    result = runner.invoke(app, [
+        "update", str(job_id), "--zoom", "50", "--js-script", "alert('hi');"
+    ])
+    assert result.exit_code == 0
+    job = db.get_job(job_id)
+    assert job.zoom == 50
+    assert job.js_script == "alert('hi');"
+    
+    # Test clear_js_script
+    result2 = runner.invoke(app, ["update", str(job_id), "--clear-js-script"])
+    assert result2.exit_code == 0
+    job2 = db.get_job(job_id)
+    assert job2.js_script is None
+    assert job2.zoom == 50  # Unchanged
+

@@ -11,6 +11,7 @@ Commands
 """
 
 from datetime import datetime, timezone
+from typing import Optional
 
 import typer
 from loguru import logger
@@ -74,40 +75,34 @@ def add(
         "--not-contains",
         help="Alert only if text DOES NOT contain this string.",
     ),
-    timeout: int = typer.Option(
-        10,
-        "--timeout",
-        help="Maximum time to wait for selector attached (in seconds).",
-    ),
-    alert_on_fail: bool = typer.Option(
-        True,
-        "--alert-on-fail/--no-alert-on-fail",
-        help="Send a Telegram message when a job fails.",
-    ),
+    timeout: int = typer.Option(10, help="Seconds to wait before failing."),
+    alert_on_fail: bool = typer.Option(True, help="Send a Telegram alert if the job fails."),
+    zoom: int = typer.Option(100, help="Zoom percentage (e.g. 50 for 50%)."),
+    js_script: Optional[str] = typer.Option(None, help="JavaScript to execute before parsing target."),
 ) -> None:
-    """Add a new screenshot job to the database."""
+    """Add a new job to track a website."""
     db.init_db()
     
     # Validation
     if not utils.validate_url(url):
-        typer.echo(f"❌ Invalid URL: '{url}'. Must start with http:// or https://", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Invalid URL.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
         
     if not utils.validate_cron(cron):
-        typer.echo(f"❌ Invalid CRON expression: '{cron}'", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Invalid CRON expression.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     if job_type == JobType.TEXT and not selector:
-        typer.echo("❌ '--selector' is required when '--type' is 'text'.", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ A --selector is required for 'text' jobs.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     if contains and not_contains:
-        typer.echo("❌ Cannot use both '--contains' and '--not-contains' together.", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Cannot use both --contains and --not-contains. Pick one.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     if (contains or not_contains) and job_type != JobType.TEXT:
-        typer.echo("❌ Conditions ('--contains', '--not-contains') are only valid for 'text' jobs.", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Conditions are only valid for 'text' jobs.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
         
     condition_type = None
     condition_value = None
@@ -120,10 +115,28 @@ def add(
 
     effective_chat_id = chat_id or DEFAULT_CHAT_ID
     if not effective_chat_id:
-        # ... (unchanged)
+        typer.secho(
+            "❌ No chat ID provided. Please specify --chat-id or set DEFAULT_CHAT_ID in your .env file.",
+            fg=typer.colors.RED,
+            err=True,
+        )
         raise typer.Exit(1)
 
-    job_id = db.add_job(name, url, cron, effective_chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, timeout=timeout, alert_on_fail=alert_on_fail)
+    job_id = db.add_job(
+        name=name,
+        url=url,
+        cron=cron,
+        chat_id=effective_chat_id,
+        job_type=job_type,
+        selector=selector,
+        condition_type=condition_type,
+        condition_value=condition_value,
+        full_page=full_page,
+        timeout=timeout,
+        alert_on_fail=alert_on_fail,
+        zoom=zoom,
+        js_script=js_script
+    )
     typer.echo(f"✅ Job added — id={job_id}  name='{name}'  cron='{cron}' type='{job_type.value}'")
 
 
@@ -367,26 +380,29 @@ def update(
     contains: str = typer.Option(None, "--contains", help="Alert only if text contains this string."),
     not_contains: str = typer.Option(None, "--not-contains", help="Alert only if text DOES NOT contain this string."),
     full_page: bool = typer.Option(None, "--full-page/--no-full-page", help="Toggle full-page screenshots."),
-    clear_conditions: bool = typer.Option(False, "--clear-conditions", help="Remove all text conditions from the job."),
-    timeout: int = typer.Option(None, "--timeout", help="Maximum time to wait for selector attached (in seconds)."),
-    alert_on_fail: bool = typer.Option(None, "--alert-on-fail/--no-alert-on-fail", help="Toggle alerting on failure."),
+    timeout: Optional[int] = typer.Option(None, help="Seconds to wait before failing."),
+    alert_on_fail: Optional[bool] = typer.Option(None, help="Send a Telegram alert if the job fails."),
+    zoom: Optional[int] = typer.Option(None, help="Zoom percentage (e.g. 50 for 50%)."),
+    js_script: Optional[str] = typer.Option(None, help="JavaScript to execute before parsing target."),
+    clear_conditions: bool = typer.Option(False, "--clear-conditions", help="Remove text conditions and alert on any change."),
+    clear_js_script: bool = typer.Option(False, "--clear-js-script", help="Remove pre-execution javascript logic from job.")
 ) -> None:
     """Update an existing job's details."""
     db.init_db()
 
     current_job = db.get_job(job_id)
     if not current_job:
-        typer.echo(f"❌ Job {job_id} not found.", err=True)
-        raise typer.Exit(1)
+        typer.secho(f"❌ Job '{job_id}' not found.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     # Validation if fields are provided
     if url is not None and not utils.validate_url(url):
-        typer.echo(f"❌ Invalid URL: '{url}'. Must start with http:// or https://", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Invalid URL.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     if cron is not None and not utils.validate_cron(cron):
-        typer.echo(f"❌ Invalid CRON expression: '{cron}'", err=True)
-        raise typer.Exit(1)
+        typer.secho("❌ Invalid CRON expression.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     eff_job_type = job_type if job_type else current_job.job_type
     
@@ -424,7 +440,7 @@ def update(
         # Actually, let's rely on db.update_job logic if we want to nullify, but right now db.update_job doesn't nullify if not None.
         pass
 
-    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions, timeout=timeout, alert_on_fail=alert_on_fail):
+    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions, timeout=timeout, alert_on_fail=alert_on_fail, zoom=zoom, js_script=js_script, clear_js_script=clear_js_script):
         typer.echo(f"✅ Job {job_id} updated.")
     else:
         typer.echo(f"❌ Job {job_id} not found or no updates provided.", err=True)

@@ -36,6 +36,8 @@ class Job:
     full_page: bool = False
     timeout: int = 10
     alert_on_fail: bool = True
+    zoom: int = 100
+    js_script: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,8 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         full_page=bool(row["full_page"]) if "full_page" in row.keys() else False,
         timeout=row["timeout"] if "timeout" in row.keys() else 10,
         alert_on_fail=bool(row["alert_on_fail"]) if "alert_on_fail" in row.keys() else True,
+        zoom=row["zoom"] if "zoom" in row.keys() else 100,
+        js_script=row["js_script"] if "js_script" in row.keys() else None,
     )
 
 
@@ -93,7 +97,9 @@ def init_db() -> None:
                 last_run TEXT,
                 full_page INTEGER NOT NULL DEFAULT 0,
                 timeout INTEGER NOT NULL DEFAULT 10,
-                alert_on_fail INTEGER NOT NULL DEFAULT 1
+                alert_on_fail INTEGER NOT NULL DEFAULT 1,
+                zoom INTEGER NOT NULL DEFAULT 100,
+                js_script TEXT
             )
             """
         )
@@ -103,6 +109,14 @@ def init_db() -> None:
             pass
         try:
             conn.execute("ALTER TABLE jobs ADD COLUMN alert_on_fail INTEGER NOT NULL DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN zoom INTEGER NOT NULL DEFAULT 100")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN js_script TEXT")
         except sqlite3.OperationalError:
             pass
 
@@ -117,13 +131,15 @@ def add_job(
     condition_value: str | None = None,
     full_page: bool = False,
     timeout: int = 10,
-    alert_on_fail: bool = True
+    alert_on_fail: bool = True,
+    zoom: int = 100,
+    js_script: str | None = None
 ) -> int:
     """Insert a new job and return its auto-assigned ID."""
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO jobs (name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page, timeout, alert_on_fail) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO jobs (name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page, timeout, alert_on_fail, zoom, js_script) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name, 
                 url, 
@@ -135,7 +151,9 @@ def add_job(
                 condition_value,
                 int(full_page),
                 timeout,
-                int(alert_on_fail)
+                int(alert_on_fail),
+                zoom,
+                js_script
             ),
         )
         return cur.lastrowid  # type: ignore[return-value]
@@ -184,7 +202,10 @@ def update_job(
     full_page: bool | None = None,
     timeout: int | None = None,
     alert_on_fail: bool | None = None,
+    zoom: int | None = None,
+    js_script: str | None = None,
     clear_conditions: bool = False,
+    clear_js_script: bool = False,
 ) -> bool:
     """Update job fields dynamically. Returns True if the job was found and updated."""
     updates = []
@@ -226,6 +247,14 @@ def update_job(
     if alert_on_fail is not None:
         updates.append("alert_on_fail = ?")
         params.append(int(alert_on_fail))
+    if zoom is not None:
+        updates.append("zoom = ?")
+        params.append(zoom)
+    if js_script is not None:
+        updates.append("js_script = ?")
+        params.append(js_script)
+    elif clear_js_script:
+        updates.append("js_script = NULL")
 
     if not updates:
         return False
