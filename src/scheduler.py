@@ -14,7 +14,7 @@ from loguru import logger
 
 from src import db, scraper, screenshot, telegram_sender
 from src.config import BOT_TOKEN, LOG_FILE
-from src.db import JobType
+from src.db import JobType, ConditionType
 
 
 def _execute_job(job_id: int) -> None:
