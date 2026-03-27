@@ -1,6 +1,6 @@
 # web-stalker 📸
 
-Cron-based web screenshot notifier. Visits URLs on a schedule, takes screenshots with Playwright, and sends them to a Telegram chat.
+Cron-based web screenshot & text extraction notifier. Visits URLs on a schedule, extracts content or takes screenshots with Playwright, and sends them to a Telegram chat.
 
 **Designed for:** Raspberry Pi + Docker deployment.
 
@@ -33,18 +33,24 @@ cp .env.example .env
 ## CLI Usage
 
 ```sh
-# Add a job (with optional full-page screenshot)
-uv run python main.py add --name "Google" --url "https://google.com" --cron "0 9 * * *" --full-page
+# Add a screenshot job (default)
+uv run python main.py add --name "Google" --url "https://google.com" --cron "0 9 * * *"
 
-# Update a job
-uv run python main.py update 1 --url "https://newsite.com" --cron "*/30 * * * *" --full-page
+# Add a text extraction job
+uv run python main.py add --name "Trending" --url "https://github.com/trending" --cron "0 12 * * *" --type text --selector "h2.h3"
+
+# Add a text job with conditional logging (only alerts if text contains 'Sale')
+uv run python main.py add --name "Shoe Store" --url "https://store.com" --cron "0 8 * * *" --type text --selector ".price-tag" --contains "Sale"
+
+# Update an existing text job to alert if text DOES NOT contain 'Out of stock'
+uv run python main.py update 2 --not-contains "Out of stock"
 
 # Enable / Disable a job
 uv run python main.py disable 1
 uv run python main.py enable 1
 
-# Show job details
-uv run python main.py show 1
+# Show full job details
+uv run python main.py show 2
 
 # List all jobs
 uv run python main.py list
@@ -93,6 +99,7 @@ web-stalker/
 │   ├── cli.py               # Typer CLI commands
 │   ├── scheduler.py         # APScheduler daemon (Docker PID-1)
 │   ├── screenshot.py        # Playwright screenshot engine
+│   ├── scraper.py           # Playwright text extraction engine
 │   ├── telegram_sender.py   # Telegram Bot API sender
 │   ├── db.py                # SQLite job store
 │   └── config.py            # .env loader
