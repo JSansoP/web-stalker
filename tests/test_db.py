@@ -10,6 +10,12 @@ def test_init_db(mock_db):
         cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")
         assert cur.fetchone() is not None
 
+def test_init_db_duplicate_columns(mock_db):
+    """Test that calling init_db multiple times safely ignores duplicate column errors."""
+    db.init_db()
+    db.init_db()
+
+
 def test_add_get_job(mock_db, sample_job_data):
     """Test adding and retrieving a job."""
     job_id = db.add_job(**sample_job_data)

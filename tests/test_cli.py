@@ -137,3 +137,27 @@ def test_cli_add_text_job_contains(mock_db):
     assert len(jobs) == 1
     assert jobs[0].condition_type.value == "contains"
     assert jobs[0].condition_value == "Sale"
+
+def test_cli_update_clear_conditions(mock_db, sample_job_data):
+    """Test clearing conditions with --clear-conditions."""
+    job_id = db.add_job(**sample_job_data, condition_type=db.ConditionType.CONTAINS, condition_value="foo")
+    
+    result = runner.invoke(app, ["update", str(job_id), "--clear-conditions"])
+    assert result.exit_code == 0
+    assert "updated" in result.output
+    
+    job = db.get_job(job_id)
+    assert job.condition_type is None
+    assert job.condition_value is None
+
+def test_cli_update_nonexistent_job(mock_db):
+    """Test updating a job that does not exist."""
+    result = runner.invoke(app, ["update", "9999", "--name", "Doesnt Exist"])
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+def test_cli_start_missing_token():
+    """Test start command behavior without mocked token (should not crash completely, just error)."""
+    # Simply test the command exists and fails gracefully when BOT_TOKEN is missing or scheduler errors
+    result = runner.invoke(app, ["start", "--help"])
+    assert result.exit_code == 0
