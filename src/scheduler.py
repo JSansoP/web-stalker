@@ -15,6 +15,7 @@ from loguru import logger
 from src import db, scraper, screenshot, telegram_sender
 from src.config import BOT_TOKEN, LOG_FILE
 from src.db import JobType, ConditionType
+_JOB_CRONS: dict[str, str] = {}
 
 
 def _execute_job(job_id: int) -> None:
@@ -62,6 +63,45 @@ def _execute_job(job_id: int) -> None:
             logger.error(f"[{job.name}] ❌ Failed: {exc}")
 
 
+def _sync_jobs(scheduler: BlockingScheduler) -> None:
+    """Periodically sync jobs from the database to the scheduler."""
+    current_jobs = {str(j.id): j for j in db.get_jobs() if j.enabled}
+    scheduled_jobs = {j.id: j for j in scheduler.get_jobs() if j.id != "sync_jobs"}
+    
+    # Remove jobs that are disabled or deleted
+    for job_id in list(scheduled_jobs.keys()):
+        if job_id not in current_jobs:
+            scheduler.remove_job(job_id)
+            _JOB_CRONS.pop(job_id, None)
+            logger.info(f"Removed job [{scheduled_jobs[job_id].name}] — it was disabled or deleted.")
+            
+    # Add or update jobs
+    for job_id, job in current_jobs.items():
+        if job_id not in scheduled_jobs:
+            # New job
+            scheduler.add_job(
+                _execute_job,
+                trigger=CronTrigger.from_crontab(job.cron, timezone="UTC"),
+                args=[job.id],
+                id=str(job.id),
+                name=job.name,
+                replace_existing=True,
+            )
+            _JOB_CRONS[job_id] = job.cron
+            logger.info(f"Scheduled [{job.name}] — cron: '{job.cron}'")
+        elif _JOB_CRONS.get(job_id) != job.cron or scheduled_jobs[job_id].name != job.name:
+            # Job cron or name changed
+            scheduler.add_job(
+                _execute_job,
+                trigger=CronTrigger.from_crontab(job.cron, timezone="UTC"),
+                args=[job.id],
+                id=str(job.id),
+                name=job.name,
+                replace_existing=True,
+            )
+            _JOB_CRONS[job_id] = job.cron
+            logger.info(f"Updated schedule for [{job.name}] — new cron: '{job.cron}'")
+
 def start() -> None:
     """
     Load all enabled jobs from the DB and start the blocking scheduler.
@@ -81,26 +121,26 @@ def start() -> None:
         diagnose=True,
     )
     
-    jobs = [j for j in db.get_jobs() if j.enabled]
-
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN is not set. Please configure your .env file.")
         return
 
     scheduler = BlockingScheduler(timezone="UTC")
 
-    for job in jobs:
-        scheduler.add_job(
-            _execute_job,
-            trigger=CronTrigger.from_crontab(job.cron, timezone="UTC"),
-            args=[job.id],
-            id=str(job.id),
-            name=job.name,
-            replace_existing=True,
-        )
-        logger.info(f"Scheduled [{job.name}] — cron: '{job.cron}'")
+    # Add the sync job to run every 30 seconds
+    scheduler.add_job(
+        _sync_jobs,
+        "interval",
+        seconds=30,
+        args=[scheduler],
+        id="sync_jobs",
+        name="Database Sync"
+    )
+    
+    # Run an initial sync to load jobs immediately
+    _sync_jobs(scheduler)
 
-    if not jobs:
+    if not _JOB_CRONS:
         logger.warning("No enabled jobs found. Add jobs with:  uv run python main.py add")
 
     logger.info("🚀 Scheduler running. Press Ctrl+C to stop.")

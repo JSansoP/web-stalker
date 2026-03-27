@@ -79,6 +79,11 @@ def add(
         "--timeout",
         help="Maximum time to wait for selector attached (in seconds).",
     ),
+    alert_on_fail: bool = typer.Option(
+        True,
+        "--alert-on-fail/--no-alert-on-fail",
+        help="Send a Telegram message when a job fails.",
+    ),
 ) -> None:
     """Add a new screenshot job to the database."""
     db.init_db()
@@ -118,7 +123,7 @@ def add(
         # ... (unchanged)
         raise typer.Exit(1)
 
-    job_id = db.add_job(name, url, cron, effective_chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, timeout=timeout)
+    job_id = db.add_job(name, url, cron, effective_chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, timeout=timeout, alert_on_fail=alert_on_fail)
     typer.echo(f"✅ Job added — id={job_id}  name='{name}'  cron='{cron}' type='{job_type.value}'")
 
 
@@ -147,6 +152,7 @@ def list_jobs() -> None:
     table.add_column("Cron", style="yellow")
     table.add_column("Chat ID", style="dim")
     table.add_column("Timeout(s)", justify="center")
+    table.add_column("Alert", justify="center")
     table.add_column("On", justify="center")
     table.add_column("Last Run", style="dim")
 
@@ -174,6 +180,7 @@ def list_jobs() -> None:
             job.cron,
             job.chat_id,
             str(job.timeout),
+            "✅" if job.alert_on_fail else "❌",
             "✅" if job.enabled else "❌",
             job.last_run or "—",
         )
@@ -229,6 +236,8 @@ def run(
             typer.echo("✅ Screenshot sent to Telegram.")
         except Exception as exc:
             typer.echo(f"❌ Failed: {exc}", err=True)
+            if job.alert_on_fail:
+                telegram_sender.send_message(BOT_TOKEN, job.chat_id, f"❌ Job Failed: {job.name}\n🔗 {job.url}\n\n⚠️ Error: {exc}")
             raise typer.Exit(1)
             
     elif job.job_type == JobType.TEXT:
@@ -256,6 +265,8 @@ def run(
             typer.echo("✅ Text sent to Telegram.")
         except Exception as exc:
             typer.echo(f"❌ Failed: {exc}", err=True)
+            if job.alert_on_fail:
+                telegram_sender.send_message(BOT_TOKEN, job.chat_id, f"❌ Job Failed: {job.name}\n🔗 {job.url}\n\n⚠️ Error: {exc}")
             raise typer.Exit(1)
 
 
@@ -305,6 +316,7 @@ def show(
     table.add_row("Chat ID", job.chat_id)
     table.add_row("Enabled", "✅ Yes" if job.enabled else "❌ No")
     table.add_row("Timeout (s)", str(job.timeout))
+    table.add_row("Alert on fail", "✅ Yes" if job.alert_on_fail else "❌ No")
     table.add_row("Full Page", "✅ Yes" if job.full_page else "❌ No")
     table.add_row("Last Run", job.last_run or "—")
 
@@ -357,6 +369,7 @@ def update(
     full_page: bool = typer.Option(None, "--full-page/--no-full-page", help="Toggle full-page screenshots."),
     clear_conditions: bool = typer.Option(False, "--clear-conditions", help="Remove all text conditions from the job."),
     timeout: int = typer.Option(None, "--timeout", help="Maximum time to wait for selector attached (in seconds)."),
+    alert_on_fail: bool = typer.Option(None, "--alert-on-fail/--no-alert-on-fail", help="Toggle alerting on failure."),
 ) -> None:
     """Update an existing job's details."""
     db.init_db()
@@ -411,7 +424,7 @@ def update(
         # Actually, let's rely on db.update_job logic if we want to nullify, but right now db.update_job doesn't nullify if not None.
         pass
 
-    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions, timeout=timeout):
+    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions, timeout=timeout, alert_on_fail=alert_on_fail):
         typer.echo(f"✅ Job {job_id} updated.")
     else:
         typer.echo(f"❌ Job {job_id} not found or no updates provided.", err=True)

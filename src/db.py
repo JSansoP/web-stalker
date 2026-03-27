@@ -35,6 +35,7 @@ class Job:
     last_run: str | None
     full_page: bool = False
     timeout: int = 10
+    alert_on_fail: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +65,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         last_run=row["last_run"],
         full_page=bool(row["full_page"]) if "full_page" in row.keys() else False,
         timeout=row["timeout"] if "timeout" in row.keys() else 10,
+        alert_on_fail=bool(row["alert_on_fail"]) if "alert_on_fail" in row.keys() else True,
     )
 
 
@@ -90,12 +92,17 @@ def init_db() -> None:
                 enabled  INTEGER NOT NULL DEFAULT 1,
                 last_run TEXT,
                 full_page INTEGER NOT NULL DEFAULT 0,
-                timeout INTEGER NOT NULL DEFAULT 10
+                timeout INTEGER NOT NULL DEFAULT 10,
+                alert_on_fail INTEGER NOT NULL DEFAULT 1
             )
             """
         )
         try:
             conn.execute("ALTER TABLE jobs ADD COLUMN timeout INTEGER NOT NULL DEFAULT 10")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN alert_on_fail INTEGER NOT NULL DEFAULT 1")
         except sqlite3.OperationalError:
             pass
 
@@ -109,13 +116,14 @@ def add_job(
     condition_type: ConditionType | None = None,
     condition_value: str | None = None,
     full_page: bool = False,
-    timeout: int = 10
+    timeout: int = 10,
+    alert_on_fail: bool = True
 ) -> int:
     """Insert a new job and return its auto-assigned ID."""
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO jobs (name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page, timeout) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO jobs (name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page, timeout, alert_on_fail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name, 
                 url, 
@@ -126,7 +134,8 @@ def add_job(
                 condition_type.value if condition_type else None,
                 condition_value,
                 int(full_page),
-                timeout
+                timeout,
+                int(alert_on_fail)
             ),
         )
         return cur.lastrowid  # type: ignore[return-value]
@@ -174,6 +183,7 @@ def update_job(
     condition_value: str | None = None,
     full_page: bool | None = None,
     timeout: int | None = None,
+    alert_on_fail: bool | None = None,
     clear_conditions: bool = False,
 ) -> bool:
     """Update job fields dynamically. Returns True if the job was found and updated."""
@@ -213,6 +223,9 @@ def update_job(
     if timeout is not None:
         updates.append("timeout = ?")
         params.append(timeout)
+    if alert_on_fail is not None:
+        updates.append("alert_on_fail = ?")
+        params.append(int(alert_on_fail))
 
     if not updates:
         return False
