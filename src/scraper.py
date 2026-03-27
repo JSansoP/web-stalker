@@ -9,7 +9,7 @@ import os
 from playwright.sync_api import sync_playwright
 
 
-def extract_text(url: str, selector: str) -> str:
+def extract_text(url: str, selector: str, timeout: int = 10) -> str:
     """
     Navigate to *url* with a headless Chromium browser, wait for the *selector*,
     and return its innerText. Raises an exception if the selector is not found.
@@ -30,7 +30,7 @@ def extract_text(url: str, selector: str) -> str:
         page.goto(url, wait_until="networkidle", timeout=30_000)
         
         # Wait for the selector to be attached to the DOM
-        element = page.wait_for_selector(selector, state="attached", timeout=10_000)
+        element = page.wait_for_selector(selector, state="attached", timeout=timeout * 1000)
         
         if not element:
             browser.close()

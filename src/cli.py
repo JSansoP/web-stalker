@@ -74,6 +74,11 @@ def add(
         "--not-contains",
         help="Alert only if text DOES NOT contain this string.",
     ),
+    timeout: int = typer.Option(
+        10,
+        "--timeout",
+        help="Maximum time to wait for selector attached (in seconds).",
+    ),
 ) -> None:
     """Add a new screenshot job to the database."""
     db.init_db()
@@ -113,7 +118,7 @@ def add(
         # ... (unchanged)
         raise typer.Exit(1)
 
-    job_id = db.add_job(name, url, cron, effective_chat_id, job_type, selector, condition_type, condition_value, full_page=full_page)
+    job_id = db.add_job(name, url, cron, effective_chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, timeout=timeout)
     typer.echo(f"✅ Job added — id={job_id}  name='{name}'  cron='{cron}' type='{job_type.value}'")
 
 
@@ -141,6 +146,7 @@ def list_jobs() -> None:
     table.add_column("URL", overflow="fold")
     table.add_column("Cron", style="yellow")
     table.add_column("Chat ID", style="dim")
+    table.add_column("Timeout(s)", justify="center")
     table.add_column("On", justify="center")
     table.add_column("Last Run", style="dim")
 
@@ -167,6 +173,7 @@ def list_jobs() -> None:
             job.url,
             job.cron,
             job.chat_id,
+            str(job.timeout),
             "✅" if job.enabled else "❌",
             job.last_run or "—",
         )
@@ -229,7 +236,7 @@ def run(
         try:
             if not job.selector:
                 raise ValueError("Text job is missing a selector.")
-            text = scraper.extract_text(job.url, job.selector)
+            text = scraper.extract_text(job.url, job.selector, timeout=job.timeout)
             
             # Evaluate condition
             text_lower = text.lower()
@@ -297,6 +304,7 @@ def show(
     table.add_row("Cron", job.cron)
     table.add_row("Chat ID", job.chat_id)
     table.add_row("Enabled", "✅ Yes" if job.enabled else "❌ No")
+    table.add_row("Timeout (s)", str(job.timeout))
     table.add_row("Full Page", "✅ Yes" if job.full_page else "❌ No")
     table.add_row("Last Run", job.last_run or "—")
 
@@ -348,6 +356,7 @@ def update(
     not_contains: str = typer.Option(None, "--not-contains", help="Alert only if text DOES NOT contain this string."),
     full_page: bool = typer.Option(None, "--full-page/--no-full-page", help="Toggle full-page screenshots."),
     clear_conditions: bool = typer.Option(False, "--clear-conditions", help="Remove all text conditions from the job."),
+    timeout: int = typer.Option(None, "--timeout", help="Maximum time to wait for selector attached (in seconds)."),
 ) -> None:
     """Update an existing job's details."""
     db.init_db()
@@ -402,7 +411,7 @@ def update(
         # Actually, let's rely on db.update_job logic if we want to nullify, but right now db.update_job doesn't nullify if not None.
         pass
 
-    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions):
+    if db.update_job(job_id, name, url, cron, chat_id, job_type, selector, condition_type, condition_value, full_page=full_page, clear_conditions=clear_conditions, timeout=timeout):
         typer.echo(f"✅ Job {job_id} updated.")
     else:
         typer.echo(f"❌ Job {job_id} not found or no updates provided.", err=True)

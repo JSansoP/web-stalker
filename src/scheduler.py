@@ -41,7 +41,7 @@ def _execute_job(job_id: int) -> None:
         try:
             if not job.selector:
                 raise ValueError("Text job is missing a selector.")
-            text = scraper.extract_text(job.url, job.selector)
+            text = scraper.extract_text(job.url, job.selector, timeout=job.timeout)
             
             # Evaluate condition
             text_lower = text.lower()
