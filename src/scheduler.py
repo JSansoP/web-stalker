@@ -6,6 +6,7 @@ from the database, registers each with a CronTrigger, and then blocks forever
 until interrupted (Ctrl+C / SIGTERM from Docker).
 """
 
+import logging
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -13,9 +14,38 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
 from src import db, scraper, screenshot, telegram_sender
-from src.config import BOT_TOKEN, LOG_FILE
+from src.config import BOT_TOKEN, LOG_FILE, CONTAINER_ID
 from src.db import JobType, ConditionType
 _JOB_CRONS: dict[str, str] = {}
+
+
+class InterceptHandler(logging.Handler):
+    """
+    Bridges standard Python logging (used by APScheduler, etc.) to Loguru.
+    Filters out non-ERROR logs from external libraries.
+    """
+    def emit(self, record):
+        # Get corresponding Loguru level if it exists
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Find caller from where originated the logged message
+        frame, depth = logging.currentframe(), 2
+        while frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        # Check if it's a library or our code
+        # Libs like apscheduler, playwright, etc. aren't in the 'src' package.
+        is_library = not record.name.startswith("src")
+        
+        # Filter: if it's a library, only log if it's ERROR or higher
+        if is_library and record.levelno < logging.ERROR:
+            return
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 def _execute_job(job_id: int) -> None:
@@ -109,42 +139,59 @@ def start() -> None:
     This is intended to be the Docker container's PID-1 process:
         CMD ["uv", "run", "python", "main.py", "start"]
     """
-    db.init_db()
-    
+    # 1. Setup logging immediately so initialization errors are recorded
+    log_format = (
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{extra[container_id]}</cyan> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    )
+
+    # Push the container ID into every log record
+    logger.configure(extra={"container_id": CONTAINER_ID})
+
     # Configure logging to file with rotation and retention
     logger.add(
         LOG_FILE,
         rotation="10 MB",
         retention="1 week",
         level="INFO",
+        format=log_format,
         backtrace=True,
         diagnose=True,
     )
-    
-    if not BOT_TOKEN:
-        logger.error("BOT_TOKEN is not set. Please configure your .env file.")
-        return
 
-    scheduler = BlockingScheduler(timezone="UTC")
+    # Intercept standard logging messages (like APScheduler's)
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
-    # Add the sync job to run every 30 seconds
-    scheduler.add_job(
-        _sync_jobs,
-        "interval",
-        seconds=30,
-        args=[scheduler],
-        id="sync_jobs",
-        name="Database Sync"
-    )
-    
-    # Run an initial sync to load jobs immediately
-    _sync_jobs(scheduler)
+    # 2. Main Execution loop wrapped in logger.catch
+    with logger.catch(message="Fatal crash in scheduler daemon"):
+        db.init_db()
+        
+        if not BOT_TOKEN:
+            logger.error("BOT_TOKEN is not set. Please configure your .env file.")
+            return
 
-    if not _JOB_CRONS:
-        logger.warning("No enabled jobs found. Add jobs with:  uv run python main.py add")
+        scheduler = BlockingScheduler(timezone="UTC")
 
-    logger.info("🚀 Scheduler running. Press Ctrl+C to stop.")
-    try:
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Scheduler stopped gracefully.")
+        # Add the sync job to run every 30 seconds
+        scheduler.add_job(
+            _sync_jobs,
+            "interval",
+            seconds=30,
+            args=[scheduler],
+            id="sync_jobs",
+            name="Database Sync"
+        )
+        
+        # Run an initial sync to load jobs immediately
+        _sync_jobs(scheduler)
+
+        if not _JOB_CRONS:
+            logger.warning("No enabled jobs found. Add jobs with:  uv run python main.py add")
+
+        logger.info("🚀 Scheduler running. Press Ctrl+C to stop.")
+        try:
+            scheduler.start()
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Scheduler stopped gracefully.")
