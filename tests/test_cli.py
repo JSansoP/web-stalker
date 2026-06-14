@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from typer.testing import CliRunner
 from src.cli import app
 from src import db
@@ -195,4 +196,58 @@ def test_cli_update_zoom_and_js_script(mock_db, sample_job_data):
     job2 = db.get_job(job_id)
     assert job2.js_script is None
     assert job2.zoom == 50  # Unchanged
+
+
+@patch("src.cli.telegram_sender")
+@patch("src.cli.screenshot")
+def test_cli_run_screenshot_passes_params(mock_screenshot, mock_telegram, mock_db, sample_job_data):
+    """Test that the run command passes the custom zoom and js_script parameters to screenshot."""
+    job_id = db.add_job(
+        **sample_job_data,
+        zoom=75,
+        js_script="console.log('test screenshot');"
+    )
+    
+    mock_screenshot.take_screenshot.return_value = b"fake_png_data"
+    
+    # Run the job via CLI
+    with patch("src.cli.BOT_TOKEN", "fake_token"):
+        result = runner.invoke(app, ["run", str(job_id)])
+        
+    assert result.exit_code == 0
+    mock_screenshot.take_screenshot.assert_called_once_with(
+        sample_job_data["url"],
+        full_page=False,
+        zoom=75,
+        js_script="console.log('test screenshot');"
+    )
+
+
+@patch("src.cli.telegram_sender")
+@patch("src.cli.scraper")
+def test_cli_run_text_passes_params(mock_scraper, mock_telegram, mock_db, sample_job_data):
+    """Test that the run command passes the custom js_script parameter to scraper."""
+    job_id = db.add_job(
+        name="TextJob",
+        url="https://example.com",
+        cron="* * * * *",
+        chat_id="123456789",
+        job_type=db.JobType.TEXT,
+        selector="div",
+        js_script="console.log('test text');"
+    )
+    
+    mock_scraper.extract_text.return_value = "Result Text"
+    
+    # Run the job via CLI
+    with patch("src.cli.BOT_TOKEN", "fake_token"):
+        result = runner.invoke(app, ["run", str(job_id)])
+        
+    assert result.exit_code == 0
+    mock_scraper.extract_text.assert_called_once_with(
+        "https://example.com",
+        "div",
+        timeout=10,
+        js_script="console.log('test text');"
+    )
 

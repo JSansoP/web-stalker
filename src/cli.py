@@ -242,7 +242,13 @@ def run(
     if job.job_type == JobType.SCREENSHOT:
         typer.echo(f"📸 Taking screenshot of {job.url} …")
         try:
-            png = screenshot.take_screenshot(job.url, full_page=job.full_page)
+            # Pass full_page, zoom, and js_script to take_screenshot
+            png = screenshot.take_screenshot(
+                job.url,
+                full_page=job.full_page,
+                zoom=job.zoom,
+                js_script=job.js_script,
+            )
             caption = f"📸 {job.name}\n🔗 {job.url}"
             telegram_sender.send_photo(BOT_TOKEN, job.chat_id, png, caption=caption)
             db.update_last_run(job_id, datetime.now(timezone.utc).isoformat())
@@ -258,7 +264,13 @@ def run(
         try:
             if not job.selector:
                 raise ValueError("Text job is missing a selector.")
-            text = scraper.extract_text(job.url, job.selector, timeout=job.timeout)
+            # Pass timeout and js_script to extract_text
+            text = scraper.extract_text(
+                job.url,
+                job.selector,
+                timeout=job.timeout,
+                js_script=job.js_script,
+            )
             
             # Evaluate condition
             text_lower = text.lower()
