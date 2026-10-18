@@ -14,6 +14,10 @@ load_dotenv()
 
 BOT_TOKEN: str = os.environ.get("BOT_TOKEN", "")
 DEFAULT_CHAT_ID: str = os.environ.get("DEFAULT_CHAT_ID", "")
+
+# heartbeat-monitor ping URL (empty disables the heartbeat tick)
+HEARTBEAT_URL: str = os.environ.get("HEARTBEAT_URL", "")
+HEARTBEAT_INTERVAL_MINUTES: int = int(os.environ.get("HEARTBEAT_INTERVAL_MINUTES", "5"))
 LOG_FILE: Path = Path(__file__).parent.parent / "data" / "stalker.log"
 
 # The short hostname is typically the Docker container ID.

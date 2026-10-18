@@ -30,6 +30,8 @@ cp .env.example .env
 
 ---
 
+Optional: set `HEARTBEAT_URL` (for example `http://127.0.0.1:8091/ping/web-stalker`) to have the scheduler daemon ping [heartbeat-monitor](https://github.com/JSansoP/heartbeat-monitor) every `HEARTBEAT_INTERVAL_MINUTES` (default 5) while it is alive. Pings use a 5 s timeout and failures are only logged.
+
 ## CLI Usage
 
 ```sh
@@ -101,6 +103,7 @@ web-stalker/
 │   ├── screenshot.py        # Playwright screenshot engine
 │   ├── scraper.py           # Playwright text extraction engine
 │   ├── telegram_sender.py   # Telegram Bot API sender
+│   ├── heartbeat.py         # Optional pings to heartbeat-monitor
 │   ├── db.py                # SQLite job store
 │   └── config.py            # .env loader
 ├── data/                    # SQLite DB (gitignored)

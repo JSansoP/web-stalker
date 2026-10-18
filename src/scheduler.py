@@ -13,10 +13,11 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
-from src import db, scraper, screenshot, telegram_sender
-from src.config import BOT_TOKEN, LOG_FILE, CONTAINER_ID
+from src import db, heartbeat, scraper, screenshot, telegram_sender
+from src.config import BOT_TOKEN, CONTAINER_ID, HEARTBEAT_INTERVAL_MINUTES, HEARTBEAT_URL, LOG_FILE
 from src.db import JobType, ConditionType
 _JOB_CRONS: dict[str, str] = {}
+SYSTEM_JOB_IDS = {"sync_jobs", "heartbeat"}
 
 
 class InterceptHandler(logging.Handler):
@@ -96,7 +97,7 @@ def _execute_job(job_id: int) -> None:
 def _sync_jobs(scheduler: BlockingScheduler) -> None:
     """Periodically sync jobs from the database to the scheduler."""
     current_jobs = {str(j.id): j for j in db.get_jobs() if j.enabled}
-    scheduled_jobs = {j.id: j for j in scheduler.get_jobs() if j.id != "sync_jobs"}
+    scheduled_jobs = {j.id: j for j in scheduler.get_jobs() if j.id not in SYSTEM_JOB_IDS}
     
     # Remove jobs that are disabled or deleted
     for job_id in list(scheduled_jobs.keys()):
@@ -131,6 +132,23 @@ def _sync_jobs(scheduler: BlockingScheduler) -> None:
             )
             _JOB_CRONS[job_id] = job.cron
             logger.info(f"Updated schedule for [{job.name}] — new cron: '{job.cron}'")
+
+def _add_heartbeat_job(scheduler: BlockingScheduler) -> bool:
+    """Ping heartbeat-monitor on a fixed interval (and right away) when HEARTBEAT_URL is set."""
+    if not HEARTBEAT_URL:
+        return False
+    scheduler.add_job(
+        heartbeat.send,
+        "interval",
+        minutes=HEARTBEAT_INTERVAL_MINUTES,
+        id="heartbeat",
+        name="Heartbeat",
+        next_run_time=datetime.now(timezone.utc),
+        replace_existing=True,
+    )
+    logger.info(f"Heartbeat every {HEARTBEAT_INTERVAL_MINUTES} min to {HEARTBEAT_URL}")
+    return True
+
 
 def start() -> None:
     """
@@ -184,6 +202,8 @@ def start() -> None:
             name="Database Sync"
         )
         
+        _add_heartbeat_job(scheduler)
+
         # Run an initial sync to load jobs immediately
         _sync_jobs(scheduler)
 
